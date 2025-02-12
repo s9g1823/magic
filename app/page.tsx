@@ -1,101 +1,237 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useRef, useEffect, useState, useCallback } from "react";
+import "@fontsource/poppins"; // Import Poppins font
+import { listenerCount } from "node:process";
+
+import VelocityZmqListener, { DecodePacket } from "./ZmqListener";
+import ZmqClient from "./ZmqClient";
+
+const Magic: React.FC = () => {
+  
+  //Useless CSS
+  const pageStyle: React.CSSProperties = {
+    backgroundColor: "#E58C8A",
+    height: "100vh",
+    width: "100vw",
+    margin: 0,
+    padding: 0,
+    display: "flex", // Use flexbox for centering
+    justifyContent: "center", // Center horizontally
+    alignItems: "center", // Center vertically
+    fontFamily: "Poppins, sans-serif",
+    overflow: "hidden", // Prevent scrolling
+  };
+
+  
+  //ZMQ setup for Link
+  const zmqService = useRef(VelocityZmqListener.factory());
+  const velocities = useRef<DecodePacket | null>(null);
+  const sideLikelihoods = useRef<number[]>(Array(8).fill(0));
+
+  useEffect(() => {
+    zmqService.current.start();
+
+    return () => {
+      zmqService.current.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleDecodeData(data: DecodePacket) {
+      velocities.current = data;
+      //console.log('Received velocity data:', data);
+
+      // Map hacked click values to the corresponding sides
+      // Numbering goes clockwise starting from space
+      sideLikelihoods.current[0] =
+        velocities.current.left_click_probability_smoothed;
+      sideLikelihoods.current[1] = velocities.current.velocity_smoothed_x;
+      sideLikelihoods.current[2] =
+        velocities.current.raw_left_click_probability;
+      sideLikelihoods.current[3] = velocities.current.velocity_smoothed_y;
+      sideLikelihoods.current[4] =
+        velocities.current.middle_click_probability_smoothed;
+      sideLikelihoods.current[5] =
+        velocities.current.raw_middle_click_probability;
+      sideLikelihoods.current[6] =
+        velocities.current.right_click_probability_smoothed;
+      sideLikelihoods.current[7] =
+        velocities.current.raw_right_click_probability;
+
+        const newX =
+          position.current.x +
+          velocities.current.final_velocity_x * 0.015;
+          // velocities.current.final_velocity_x * speed.current * 0.01;
+        const newY =
+          position.current.y +
+          velocities.current.final_velocity_y * 0.015;
+          // velocities.current.final_velocity_y * speed.current * 0.01;
+
+    zmqService.current.events.on(
+      ZmqClient.EVENT_MESSAGE,
+      handleDecodeData,
+    );
+
+    return () => {
+      zmqService.current.events.off(
+        ZmqClient.EVENT_MESSAGE,
+        handleDecodeData,
+      );
+    };
+  }, [velocities.current]);
+
+  //Canvas setup
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  //Pointer lock setup
+  const [isLocked, setIsLocked] = useState(false);
+
+  //Set up the position of the dot to track
+  const canvasHeight = 1100;
+  const canvasWidth = canvasHeight;
+  const position = useRef({x: canvasWidth/2, y: canvasHeight / 2})
+
+  //Draw the Dots
+  const drawScene = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+
+    // Draw the dot cursor
+    ctx.fillStyle = "#7EE8FA";
+    ctx.beginPath();
+    ctx.arc(position.current.x, position.current.y, 27, 0, 2 * Math.PI);
+    ctx.fill();
+
+    //ctx.fillStyle = "#80FF72";
+    ctx.fillStyle = "yellow";
+    
+    let coordinatesTargets = [
+      {x: 1/6, y: 1/6},
+      {x: 1/2, y: 1/6},
+      {x: 5/6, y: 1/6},
+      {x: 1/2, y: 1/2},
+      {x: 1/6, y: 1/2},
+      {x: 5/6, y: 1/2},
+      {x: 1/6, y: 5/6},
+      {x: 1/2, y: 5/6},
+      {x: 5/6, y: 5/6},
+     ];
+
+     let scaledCoordinates = coordinatesTargets.map(coord => {
+      return {
+        x: coord.x * canvas.width,
+        y: coord.y * canvas.height
+      };
+    });
+
+     
+    for (let i = 0; i < coordinatesTargets.length; i++) {
+      ctx.beginPath();
+      ctx.arc(coordinatesTargets[i].x * canvas.width, coordinatesTargets[i].y * canvas.height, 69, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    console.log(velx.current + vely.current);
+    if (Math.abs(velx.current) + Math.abs(vely.current) < 4) {
+      console.log("We reached low velocities");
+      let hitCircleIndex = findClosestCircle();
+      ctx.fillStyle = "red"
+      ctx.beginPath();
+      ctx.arc(coordinatesTargets[hitCircleIndex].x * canvas.width, coordinatesTargets[hitCircleIndex].y * canvas.height, 69, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    
+    function findClosestCircle() {
+      // Initialize variables within the function's scope
+      let closestIndex = -1;
+      let smallestDistance = Infinity;
+    
+      for (let i = 0; i < coordinatesTargets.length; i++) {
+        let target = scaledCoordinates[i];
+        let distance = Math.sqrt(Math.pow(target.x - position.current.x, 2) + Math.pow(target.y - position.current.y, 2));
+    
+        if (distance < smallestDistance) {
+          smallestDistance = distance;
+          closestIndex = i;
+        }
+      }
+    
+      return closestIndex;
+    }
+
+
+  }, []);
+  
+  const velx = useRef<number>(0);
+  const vely = useRef<number>(0);
+
+  //Mouse movements runnin'
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      velx.current = e.movementX;
+      vely.current = e.movementY;
+
+      const newX = position.current.x + e.movementX;
+      const newY = position.current.y + e.movementY;
+      position.current = { x: newX, y: newY };
+      drawScene();
+    };
+
+    const handleClick = () => {
+      if (document.pointerLockElement === canvas) {
+        document.exitPointerLock();
+      } else {
+        canvas.requestPointerLock();
+      }
+    };
+
+    const lockChangeAlert = () => {
+      if (document.pointerLockElement === canvas) {
+        console.log("Pointer lock activated.");
+        document.addEventListener("mousemove", handleMouseMove);
+        drawScene();
+      } else {
+        console.log("Pointer lock deactivated.");
+        document.removeEventListener("mousemove", handleMouseMove);
+      }
+    };
+
+    canvas.addEventListener("click", handleClick);
+    document.addEventListener("pointerlockchange", lockChangeAlert);
+
+    return () => {
+      canvas.removeEventListener("click", handleClick);
+      document.removeEventListener("pointerlockchange", lockChangeAlert);
+    };
+  }, []);
+
+  
+
+  //Debug corner
+  console.log("position: " + position.current.x);
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+    <div style={pageStyle}>
+      <canvas
+        ref={canvasRef}
+        width={canvasWidth}
+        height={canvasHeight}
+        style={{
+          position: "relative",
+          opacity: 1,
+          zIndex: 0,
+        }}
+      />
     </div>
   );
-}
+};
+
+export default Magic;
