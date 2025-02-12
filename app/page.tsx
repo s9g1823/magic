@@ -40,33 +40,14 @@ const Magic: React.FC = () => {
   useEffect(() => {
     function handleDecodeData(data: DecodePacket) {
       velocities.current = data;
-      //console.log('Received velocity data:', data);
 
-      // Map hacked click values to the corresponding sides
-      // Numbering goes clockwise starting from space
-      sideLikelihoods.current[0] =
-        velocities.current.left_click_probability_smoothed;
-      sideLikelihoods.current[1] = velocities.current.velocity_smoothed_x;
-      sideLikelihoods.current[2] =
-        velocities.current.raw_left_click_probability;
-      sideLikelihoods.current[3] = velocities.current.velocity_smoothed_y;
-      sideLikelihoods.current[4] =
-        velocities.current.middle_click_probability_smoothed;
-      sideLikelihoods.current[5] =
-        velocities.current.raw_middle_click_probability;
-      sideLikelihoods.current[6] =
-        velocities.current.right_click_probability_smoothed;
-      sideLikelihoods.current[7] =
-        velocities.current.raw_right_click_probability;
+      const newX =
+        position.current.x + velocities.current.final_velocity_x * 0.015;
 
-        const newX =
-          position.current.x +
-          velocities.current.final_velocity_x * 0.015;
-          // velocities.current.final_velocity_x * speed.current * 0.01;
-        const newY =
-          position.current.y +
-          velocities.current.final_velocity_y * 0.015;
-          // velocities.current.final_velocity_y * speed.current * 0.01;
+      const newY =
+        position.current.y + velocities.current.final_velocity_y * 0.015;
+
+        position.current = { x: newX, y: newY };
 
     zmqService.current.events.on(
       ZmqClient.EVENT_MESSAGE,
@@ -79,7 +60,8 @@ const Magic: React.FC = () => {
         handleDecodeData,
       );
     };
-  }, [velocities.current]);
+  }
+  }, [velocities.current])
 
   //Canvas setup
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -137,7 +119,7 @@ const Magic: React.FC = () => {
       ctx.fill();
     }
     console.log(velx.current + vely.current);
-    if (Math.abs(velx.current) + Math.abs(vely.current) < 4) {
+    if (Math.abs(velocities.current?.final_velocity_x ?? 0) + Math.abs(velocities.current?.final_velocity_y ?? 0) < 100) {
       console.log("We reached low velocities");
       let hitCircleIndex = findClosestCircle();
       ctx.fillStyle = "red"
@@ -181,7 +163,7 @@ const Magic: React.FC = () => {
 
       const newX = position.current.x + e.movementX;
       const newY = position.current.y + e.movementY;
-      position.current = { x: newX, y: newY };
+      //position.current = { x: newX, y: newY };
       drawScene();
     };
 
